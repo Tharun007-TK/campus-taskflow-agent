@@ -52,7 +52,11 @@ def create_sample_pdf(filename):
 
 if __name__ == "__main__":
     import os
-    os.makedirs("test_docs", exist_ok=True)
-    output_path = os.path.join("test_docs", "sample_course.pdf")
+    # Get project root (parent of tests dir)
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    test_docs_dir = os.path.join(project_root, "test_docs")
+    
+    os.makedirs(test_docs_dir, exist_ok=True)
+    output_path = os.path.join(test_docs_dir, "sample_course.pdf")
     create_sample_pdf(output_path)
     print(f"Created {output_path}")

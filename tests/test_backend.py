@@ -4,9 +4,12 @@ import os
 def test_upload():
     url = "http://localhost:8000/upload/"
     
-    filename = os.path.join("test_docs", "sample_course.pdf")
+    # Get project root (parent of tests dir)
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    filename = os.path.join(project_root, "test_docs", "sample_course.pdf")
+    
     if not os.path.exists(filename):
-        print(f"Sample PDF not found at {filename}. Run create_sample_pdf.py first.")
+        print(f"Sample PDF not found at {filename}. Run tests/create_sample_pdf.py first.")
         return
 
     files = {'file': (filename, open(filename, 'rb'), 'application/pdf')}

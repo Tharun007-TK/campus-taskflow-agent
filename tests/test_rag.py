@@ -1,4 +1,9 @@
 import os
+import sys
+
+# Add project root to sys.path to allow importing backend
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from backend.rag import SimpleRAGEngine
 from dotenv import load_dotenv
 

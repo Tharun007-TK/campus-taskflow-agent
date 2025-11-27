@@ -10,6 +10,18 @@ __pycache__/
 *.db
 simple_rag_db.json
 chroma_db/
+# Environment Variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database
+*.db
+simple_rag_db.json
+chroma_db/
 test_chroma_db/
 
 # Temporary Files
@@ -20,5 +32,6 @@ test_docs/
 .vscode/
 .idea/
 
-# Virtual Environment
+#Virtual Environment
 capstone/
+env/
