@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import tempfile
+import requests
 from agents.orchestrator import Orchestrator
 from dotenv import load_dotenv
 
@@ -121,122 +122,151 @@ if uploaded_file is not None:
         process_btn = st.button("🚀 Process Document")
 
     if process_btn:
-        if not os.getenv("GEMINI_API_KEY"):
-            st.error("❌ Please configure your Gemini API Key in Settings.")
-        else:
-            with st.spinner("🤖 Agents are analyzing your document..."):
-                try:
+        with st.spinner("Uploading and processing..."):
+            try:
+                # Try to call the API
+                api_url = "http://localhost:8000/upload/"
+                files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
+                
+                response = requests.post(api_url, files=files)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    st.session_state.results = data.get("results", {})
+                    st.success("Processed via Backend API")
+                else:
+                    st.warning("Backend API not reachable or error. Falling back to local mode.")
+                    # Fallback to local
+                    if not os.getenv("GEMINI_API_KEY"):
+                         st.error("Please configure API Key for local mode.")
+                         st.stop()
+                         
                     orchestrator = Orchestrator()
-                    results = orchestrator.process_and_return(tmp_file_path)
-                    
-                    # Metrics Row
-                    m1, m2, m3 = st.columns(3)
-                    with m1:
-                        st.markdown(f"<div class='metric-container'><h3>{len(results.get('tasks', []))}</h3><p>Tasks Extracted</p></div>", unsafe_allow_html=True)
-                    with m2:
-                        st.markdown(f"<div class='metric-container'><h3>{len(results.get('plan', []))}</h3><p>Study Steps</p></div>", unsafe_allow_html=True)
-                    with m3:
-                        st.markdown(f"<div class='metric-container'><h3>{len(results.get('flashcards', []))}</h3><p>Flashcards</p></div>", unsafe_allow_html=True)
-                    
-                    st.markdown("---")
+                    st.session_state.results = orchestrator.process_and_return(tmp_file_path)
 
-                    # Tabs for content
-                    tab_tasks, tab_plan, tab_summary, tab_cards = st.tabs(["📋 Tasks & Deadlines", "📅 Study Plan", "📝 Smart Summary", "🗂️ Flashcards"])
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
+            finally:
+                if os.path.exists(tmp_file_path):
+                    os.remove(tmp_file_path)
+
+    # Check if results exist in session state
+    if "results" in st.session_state:
+        results = st.session_state.results
+
+        # Metrics Row
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.markdown(f"<div class='metric-container'><h3>{len(results.get('tasks', []))}</h3><p>Tasks Extracted</p></div>", unsafe_allow_html=True)
+        with m2:
+            st.markdown(f"<div class='metric-container'><h3>{len(results.get('plan', []))}</h3><p>Study Steps</p></div>", unsafe_allow_html=True)
+        with m3:
+            st.markdown(f"<div class='metric-container'><h3>{len(results.get('flashcards', []))}</h3><p>Flashcards</p></div>", unsafe_allow_html=True)
+        
+        st.markdown("---")
+
+        # Tabs for content
+        tab_tasks, tab_plan, tab_summary, tab_cards, tab_chat = st.tabs(["📋 Tasks", "📅 Plan", "📝 Summary", "🗂️ Flashcards", "💬 Chat (RAG)"])
+        
+        with tab_tasks:
+            st.subheader("Extracted Action Items")
+            tasks = results.get('tasks', [])
+            if tasks:
+                for task in tasks:
+                    priority = task.get('priority', 'low').lower()
+                    p_class = f"priority-{priority}"
                     
-                    with tab_tasks:
-                        st.subheader("Extracted Action Items")
-                        tasks = results.get('tasks', [])
-                        if tasks:
-                            for task in tasks:
-                                priority = task.get('priority', 'low').lower()
-                                p_class = f"priority-{priority}"
-                                
-                                st.markdown(f"""
-                                <div class="task-card {p_class}">
-                                    <h4>{task.get('title')}</h4>
-                                    <p><strong>Type:</strong> {task.get('type')} &nbsp;|&nbsp; <strong>Due:</strong> {task.get('deadline')}</p>
-                                    <p>{task.get('description')}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            st.info("No specific tasks found in the document.")
+                    st.markdown(f"""
+                    <div class="task-card {p_class}">
+                        <h4>{task.get('title')}</h4>
+                        <p><strong>Type:</strong> {task.get('type')} &nbsp;|&nbsp; <strong>Due:</strong> {task.get('deadline')}</p>
+                        <p>{task.get('description')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No specific tasks found.")
 
-                    with tab_plan:
-                        st.subheader("AI-Generated Study Schedule")
-                        plan = results.get('plan', [])
-                        if plan:
-                            for i, item in enumerate(plan):
-                                with st.container():
-                                    c1, c2 = st.columns([1, 4])
-                                    with c1:
-                                        st.markdown(f"**{item.get('suggested_day')}**")
-                                        st.caption(item.get('estimated_duration'))
-                                    with c2:
-                                        st.markdown(f"**{item.get('action')}**")
-                                        st.caption(f"For: {item.get('related_task')}")
-                                    st.divider()
-                        else:
-                            st.info("No study plan could be generated.")
+        with tab_plan:
+            st.subheader("Study Schedule")
+            plan = results.get('plan', [])
+            if plan:
+                for item in plan:
+                    with st.container():
+                        c1, c2 = st.columns([1, 4])
+                        with c1:
+                            st.markdown(f"**{item.get('suggested_day')}**")
+                            st.caption(item.get('estimated_duration'))
+                        with c2:
+                            st.markdown(f"**{item.get('action')}**")
+                            st.caption(f"For: {item.get('related_task')}")
+                        st.divider()
+            else:
+                st.info("No plan generated.")
 
-                    with tab_summary:
-                        st.subheader("Executive Summary")
+        with tab_summary:
+            st.subheader("Summary")
+            st.markdown(f"""
+            <div style="background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); color: #333333;">
+                {results.get('summary', "No summary available.")}
+            </div>
+            """, unsafe_allow_html=True)
+
+        with tab_cards:
+            st.subheader("Flashcards")
+            flashcards = results.get('flashcards', [])
+            if flashcards:
+                cols = st.columns(2)
+                for i, card in enumerate(flashcards):
+                    with cols[i % 2]:
                         st.markdown(f"""
-                        <div style="background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); color: #333333;">
-                            {results.get('summary', "No summary available.")}
+                        <div class="flashcard">
+                            <div class="flashcard-q">Q: {card.get('front')}</div>
+                            <div class="flashcard-a"><strong>A:</strong> {card.get('back')}</div>
                         </div>
                         """, unsafe_allow_html=True)
+            else:
+                st.info("No flashcards.")
 
-                    with tab_cards:
-                        st.subheader("Revision Flashcards")
-                        flashcards = results.get('flashcards', [])
-                        if flashcards:
-                            # Custom CSS for Flip Card effect (simplified for Streamlit)
-                            st.markdown("""
-                            <style>
-                            .flashcard {
-                                background-color: white;
-                                border: 1px solid #ddd;
-                                border-radius: 10px;
-                                padding: 20px;
-                                margin-bottom: 20px;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                                transition: transform 0.2s;
-                            }
-                            .flashcard:hover {
-                                transform: translateY(-5px);
-                                box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-                            }
-                            .flashcard-q {
-                                font-weight: bold;
-                                color: #333;
-                                font-size: 1.1em;
-                                margin-bottom: 10px;
-                                border-bottom: 1px solid #eee;
-                                padding-bottom: 10px;
-                            }
-                            .flashcard-a {
-                                color: #555;
-                                font-size: 1em;
-                            }
-                            </style>
-                            """, unsafe_allow_html=True)
+        with tab_chat:
+            st.subheader("Chat with your Course Material")
+            
+            # Initialize chat history
+            if "messages" not in st.session_state:
+                st.session_state.messages = []
 
-                            cols = st.columns(2)
-                            for i, card in enumerate(flashcards):
-                                with cols[i % 2]:
-                                    st.markdown(f"""
-                                    <div class="flashcard">
-                                        <div class="flashcard-q">Q: {card.get('front')}</div>
-                                        <div class="flashcard-a"><strong>A:</strong> {card.get('back')}</div>
-                                    </div>
-                                    """, unsafe_allow_html=True)
+            # Display chat messages from history on app rerun
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+            # React to user input
+            if prompt := st.chat_input("Ask a question about the document..."):
+                # Display user message in chat message container
+                st.chat_message("user").markdown(prompt)
+                # Add user message to chat history
+                st.session_state.messages.append({"role": "user", "content": prompt})
+
+                try:
+                    with st.spinner("Thinking..."):
+                        q_response = requests.post("http://localhost:8000/query/", params={"query": prompt})
+                        if q_response.status_code == 200:
+                            context = q_response.json().get("results", [])
+                            # Format the response nicely
+                            if context:
+                                response_text = "Here is what I found in the document:\n\n"
+                                for i, c in enumerate(context):
+                                    response_text += f"> {c}\n\n"
+                            else:
+                                response_text = "I couldn't find any specific information about that in the document."
                         else:
-                            st.info("No flashcards generated.")
-                            
+                            response_text = "Sorry, I'm having trouble connecting to the knowledge base right now."
                 except Exception as e:
-                    st.error(f"An error occurred during processing: {str(e)}")
-                    import traceback
-                    st.code(traceback.format_exc())
-                finally:
-                    if os.path.exists(tmp_file_path):
-                        os.remove(tmp_file_path)
+                        response_text = f"An error occurred: {str(e)}"
+
+                # Display assistant response in chat message container
+                with st.chat_message("assistant"):
+                    st.markdown(response_text)
+                # Add assistant response to chat history
+                st.session_state.messages.append({"role": "assistant", "content": response_text})

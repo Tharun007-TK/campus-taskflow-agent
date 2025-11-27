@@ -4,3 +4,9 @@ python-dateutil
 colorama
 python-dotenv
 streamlit
+fastapi
+uvicorn
+sqlalchemy
+numpy
+python-multipart
+requests
