@@ -1,8 +1,24 @@
-__pycache__/
-*.pyc
+# Environment Variables
 .env
-.DS_Store
-venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database
+*.db
+simple_rag_db.json
+chroma_db/
+test_chroma_db/
+
+# Temporary Files
+temp_docs/
+test_docs/
+
+# IDEs
+.vscode/
+.idea/
+
+# Virtual Environment
 capstone/
-*.pdf
-memory.json
