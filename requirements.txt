@@ -1,0 +1,6 @@
+google-generativeai
+pypdf
+python-dateutil
+colorama
+python-dotenv
+streamlit
