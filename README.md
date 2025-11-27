@@ -130,5 +130,5 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ---
 
 <p align="center">
-  Made by <a href="https://github.com/Tharun007-TK">Tharun</a>
+  Made with ❤️by <a href="https://github.com/Tharun007-TK">Tharun</a>
 </p>
