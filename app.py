@@ -3,6 +3,8 @@ import os
 import tempfile
 import requests
 from agents.orchestrator import Orchestrator
+from backend.rag import SimpleRAGEngine
+from tools.pdf_tools import PDFTools
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -15,6 +17,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Initialize Local RAG Engine (Singleton)
+@st.cache_resource
+def get_local_rag():
+    return SimpleRAGEngine()
 
 # Custom CSS for Professional Look
 st.markdown("""
@@ -128,21 +135,35 @@ if uploaded_file is not None:
                 api_url = "http://localhost:8000/upload/"
                 files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
                 
-                response = requests.post(api_url, files=files)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    st.session_state.results = data.get("results", {})
-                    st.success("Processed via Backend API")
-                else:
-                    st.warning("Backend API not reachable or error. Falling back to local mode.")
+                try:
+                    response = requests.post(api_url, files=files, timeout=2) # Short timeout for local check
+                    if response.status_code == 200:
+                        data = response.json()
+                        st.session_state.results = data.get("results", {})
+                        st.success("Processed via Backend API")
+                    else:
+                        raise Exception("API Error")
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, Exception):
+                    st.warning("Backend API not reachable. Switching to Local Mode (Streamlit Cloud compatible).")
+                    
                     # Fallback to local
                     if not os.getenv("GEMINI_API_KEY"):
                          st.error("Please configure API Key for local mode.")
                          st.stop()
                          
+                    # 1. Orchestrator
                     orchestrator = Orchestrator()
-                    st.session_state.results = orchestrator.process_and_return(tmp_file_path)
+                    results = orchestrator.process_and_return(tmp_file_path)
+                    st.session_state.results = results
+                    
+                    # 2. Local RAG Indexing
+                    rag = get_local_rag()
+                    text = PDFTools.extract_text(tmp_file_path)
+                    # Use filename as ID for simplicity in local mode, or generate UUID
+                    import uuid
+                    doc_id = str(uuid.uuid4())
+                    rag.add_document(doc_id=doc_id, text=text, metadata={"filename": uploaded_file.name})
+                    st.success("Processed locally (RAG Indexed)")
 
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
@@ -250,18 +271,31 @@ if uploaded_file is not None:
 
                 try:
                     with st.spinner("Thinking..."):
-                        q_response = requests.post("http://localhost:8000/query/", params={"query": prompt})
-                        if q_response.status_code == 200:
-                            context = q_response.json().get("results", [])
-                            # Format the response nicely
+                        response_text = ""
+                        # Try API first
+                        try:
+                            q_response = requests.post("http://localhost:8000/query/", params={"query": prompt}, timeout=2)
+                            if q_response.status_code == 200:
+                                context = q_response.json().get("results", [])
+                                if context:
+                                    response_text = "Here is what I found in the document:\n\n"
+                                    for i, c in enumerate(context):
+                                        response_text += f"> {c}\n\n"
+                                else:
+                                    response_text = "I couldn't find any specific information about that in the document."
+                            else:
+                                raise Exception("API Error")
+                        except:
+                            # Fallback to Local RAG
+                            rag = get_local_rag()
+                            context = rag.query(prompt)
                             if context:
-                                response_text = "Here is what I found in the document:\n\n"
+                                response_text = "Here is what I found in the document (Local Mode):\n\n"
                                 for i, c in enumerate(context):
                                     response_text += f"> {c}\n\n"
                             else:
                                 response_text = "I couldn't find any specific information about that in the document."
-                        else:
-                            response_text = "Sorry, I'm having trouble connecting to the knowledge base right now."
+
                 except Exception as e:
                         response_text = f"An error occurred: {str(e)}"
 
